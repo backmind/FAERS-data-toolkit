@@ -198,36 +198,30 @@ def getFilesUrl():
     return files
 
 def main():
-    deleteUnwantedFiles(data_dir)
+    # creating the source directory if not exits.
+    if not os.path.isdir(source_dir):
+        os.makedirs(source_dir)
+    if not os.path.isdir(data_dir):
+        os.makedirs(data_dir)
 
+    # get faers data file's url and download them.
+    faers_files = getFilesUrl()
+    if PARALLEL:
+        # =============================================================================
+        #         with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
+        #             tqdm(executor.map(downloadFiles_PLL, faers_files.values(),
+        #                               repeat(source_dir), repeat(data_dir)), total=len(faers_files))
+        # # =============================================================================
+        with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
+            executor.map(downloadFiles_PLL, faers_files.values(),
+                         repeat(source_dir), repeat(data_dir), list(range(0, len(faers_files))), repeat(len(faers_files)))
+    else:
+        downloadFiles(faers_files, source_dir, data_dir)
 
-# =============================================================================
-# def main():
-#     # creating the source directory if not exits.
-#     if not os.path.isdir(source_dir):
-#         os.makedirs(source_dir)
-#     if not os.path.isdir(data_dir):
-#         os.makedirs(data_dir)
-# 
-#     # get faers data file's url and download them.
-#     faers_files = getFilesUrl()
-#     if PARALLEL:
-#         # =============================================================================
-#         #         with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
-#         #             tqdm(executor.map(downloadFiles_PLL, faers_files.values(),
-#         #                               repeat(source_dir), repeat(data_dir)), total=len(faers_files))
-#         # # =============================================================================
-#         with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
-#             executor.map(downloadFiles_PLL, faers_files.values(),
-#                          repeat(source_dir), repeat(data_dir), list(range(0, len(faers_files))), repeat(len(faers_files)))
-#     else:
-#         downloadFiles(faers_files, source_dir, data_dir)
-# 
-#     # delete and copy files to FAERSdata.
-#     if DELETE_UNWANTED_FILES:
-#         deleteUnwantedFiles(source_dir)
-#     copyFiles(source_dir, data_dir)
-# =============================================================================
+    # delete and copy files to FAERSdata.
+    if DELETE_UNWANTED_FILES:
+        deleteUnwantedFiles(source_dir)
+    copyFiles(source_dir, data_dir)
 
 
 if __name__ == '__main__':
