@@ -1,6 +1,9 @@
-# coding: utf-8
-# author: Jing Li
-# date: 2019/04/01
+# -*- coding: utf-8 -*-
+"""
+Created on 2019/04/01
+
+@author: Jing Li, backm
+"""
 
 import os
 import re
@@ -18,20 +21,21 @@ from urllib.request import urlopen
 from concurrent.futures.thread import ThreadPoolExecutor
 from itertools import repeat
 
-
 # this script will find target in this list pages.
 target_page = ["https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html"]
 
 # local directory to save files.
-source_dir = "FAERSsrc"
-data_dir = "FAERSdata"
+source_dir = r"./FAERSsrc/"
+data_dir = r"./FAERSdata/"
+DELETE_UNWANTED_FILES = False
 
 # ignore warnings
 warnings.filterwarnings('ignore')
 
 # Set to true if want parallelization
 PARALLEL = True
-THREAD_COUNT = None # Change this at will
+THREAD_COUNT = None  # Change this at will
+
 
 def downloadFiles_PLL(faers_file, source_dir, data_dir):
     """
@@ -41,16 +45,33 @@ def downloadFiles_PLL(faers_file, source_dir, data_dir):
     :param data_dir: FAERSdata
     :return: none
     """
-    print("Download " + faers_file + "\t" + datetime.now().strftime('%Y-%m-%d %H:%M:%S'), flush=True)
-    r = requests.get(faers_file, timeout=200)
-    z = ZipFile(BytesIO(r.content))
-    z.extractall(source_dir)
-    r.close()
 
-    # delete and copy files to FAERSdata.
-    deleteUnwantedFiles(source_dir)
-    copyFiles(source_dir, data_dir)
-    print("Download " + faers_file + " success!\t" + datetime.now().strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    if os.path.isfile(source_dir + faers_file.split("/")[-1]):
+        print("\nFAERS file " + faers_file.split("/")
+              [-1].split(".")[0] + " exists, skipping.", flush=True)
+    else:
+        try:
+            print("\nDownload " + faers_file.split("/")[-1].split(".")[0] + "\t" +
+                  datetime.now().strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+            downloader(faers_file, source_dir, data_dir)
+        except Exception as e:
+            print("Download " + faers_file.split("/")
+                  [-1].split(".")[0] + " failed! Error: " + str(e), flush=True)
+        print("Sleep 30 seconds before starting download a new file.\n", flush=True)
+        time.sleep(30)
+
+
+# =============================================================================
+#     print("Download " + faers_file + "\t" +
+#           datetime.now().strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+#     r = requests.get(faers_file, timeout=200)
+#     z = ZipFile(BytesIO(r.content))
+#     z.extractall(source_dir)
+#     r.close()
+# =============================================================================
+
+    print("Download " + faers_file + " success!\t" +
+          datetime.now().strftime('%Y-%m-%d %H:%M:%S'), flush=True)
 
 
 def downloadFiles(faers_files, source_dir, data_dir):
@@ -61,22 +82,43 @@ def downloadFiles(faers_files, source_dir, data_dir):
     :param data_dir: FAERSdata
     :return: none
     """
-    for file_name in tqdm(faers_files):
-        try:
-            print("Download " + file_name + "\t" + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-            r = requests.get(faers_files[file_name], timeout=200)
-            z = ZipFile(BytesIO(r.content))
-            z.extractall(source_dir)
-            r.close()
+    for i, file_name in enumerate(faers_files):
+        print("Download {0}/{1}: {2} \t {3}".format(str(i+1), str(len(faers_files)),
+                                                    file_name, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        if os.path.isfile(source_dir + faers_files[file_name].split("/")[-1]):
+            print("FAERS file exists, skipping.")
+        else:
+            try:
+                downloader(faers_files[file_name], source_dir, data_dir)
+            except Exception as e:
+                print("Download " + file_name + " failed! Error: " + str(e))
+            print("Sleep 30 seconds before starting download a new file.\n")
+            time.sleep(30)
 
-            # delete and copy files to FAERSdata.
-            deleteUnwantedFiles(source_dir)
-            copyFiles(source_dir, data_dir)
-            print("Download " + file_name + " success!\t" + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        except Exception as e:
-            print("Download " + file_name + " failed! Error: " + str(e))
-        print("Sleep 30 seconds before starting download a new file.\n")
-        time.sleep(30)
+
+def downloader(url: str, source_dir: str = r"./", data_dir: str = r"./", fname: str = "", extract=True, bar_pos=0):
+    if fname == "":
+        fname = url.split("/")[-1]
+
+    resp = requests.get(url,  timeout=200, stream=True)
+    total = int(resp.headers.get('content-length', 0))
+    with open(source_dir + fname, 'wb') as file, tqdm(
+            desc=fname,
+            total=total,
+            unit='iB',
+            unit_scale=True,
+            unit_divisor=1024,
+            position=bar_pos
+    ) as bar:
+        for data in resp.iter_content(chunk_size=1024):
+            size = file.write(data)
+            bar.update(size)
+    if extract:
+        print("Extracting...")
+        z = ZipFile(BytesIO(resp.content))
+        z.extractall(data_dir)
+        print("Extracted.")
+    resp.close()
 
 
 def deleteUnwantedFiles(path):
@@ -163,10 +205,21 @@ def main():
     # get faers data file's url and download them.
     faers_files = getFilesUrl()
     if PARALLEL:
+        # =============================================================================
+        #         with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
+        #             tqdm(executor.map(downloadFiles_PLL, faers_files.values(),
+        #                               repeat(source_dir), repeat(data_dir)), total=len(faers_files))
+        # # =============================================================================
         with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
-            executor.map(downloadFiles_PLL, faers_files.values(), repeat(source_dir), repeat(data_dir))
+            executor.map(downloadFiles_PLL, faers_files.values(),
+                         repeat(source_dir), repeat(data_dir))
     else:
         downloadFiles(faers_files, source_dir, data_dir)
+
+    # delete and copy files to FAERSdata.
+    if DELETE_UNWANTED_FILES:
+        deleteUnwantedFiles(source_dir)
+    copyFiles(source_dir, data_dir)
 
 
 if __name__ == '__main__':
