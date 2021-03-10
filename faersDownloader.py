@@ -15,6 +15,9 @@ from zipfile import ZipFile
 from datetime import datetime
 from bs4 import BeautifulSoup
 from urllib.request import urlopen
+from concurrent.futures.thread import ThreadPoolExecutor
+from itertools import repeat
+
 
 # this script will find target in this list pages.
 target_page = ["https://fis.fda.gov/extensions/FPD-QDE-FAERS/FPD-QDE-FAERS.html"]
@@ -25,6 +28,29 @@ data_dir = "FAERSdata"
 
 # ignore warnings
 warnings.filterwarnings('ignore')
+
+# Set to true if want parallelization
+PARALLEL = True
+THREAD_COUNT = None # Change this at will
+
+def downloadFiles_PLL(faers_file, source_dir, data_dir):
+    """
+    download faers data files with parallelization.
+    :param faers_files: dict faers_files = {"name":"url"}
+    :param source_dir: FAERSsrc
+    :param data_dir: FAERSdata
+    :return: none
+    """
+    print("Download " + faers_file + "\t" + datetime.now().strftime('%Y-%m-%d %H:%M:%S'), flush=True)
+    r = requests.get(faers_file, timeout=200)
+    z = ZipFile(BytesIO(r.content))
+    z.extractall(source_dir)
+    r.close()
+
+    # delete and copy files to FAERSdata.
+    deleteUnwantedFiles(source_dir)
+    copyFiles(source_dir, data_dir)
+    print("Download " + faers_file + " success!\t" + datetime.now().strftime('%Y-%m-%d %H:%M:%S'), flush=True)
 
 
 def downloadFiles(faers_files, source_dir, data_dir):
@@ -136,7 +162,11 @@ def main():
 
     # get faers data file's url and download them.
     faers_files = getFilesUrl()
-    downloadFiles(faers_files, source_dir, data_dir)
+    if PARALLEL:
+        with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
+            executor.map(downloadFiles_PLL, faers_files.values(), repeat(source_dir), repeat(data_dir))
+    else:
+        downloadFiles(faers_files, source_dir, data_dir)
 
 
 if __name__ == '__main__':
